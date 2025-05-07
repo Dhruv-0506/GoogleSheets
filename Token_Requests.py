@@ -1,5 +1,8 @@
+from flask import Flask, jsonify
 import os
 import requests
+
+app = Flask(__name__)
 
 def get_access_token():
     token_url = "https://oauth2.googleapis.com/token"
@@ -18,12 +21,23 @@ def get_access_token():
     response = requests.post(token_url, data=payload)
 
     if response.status_code == 200:
-        access_token = response.json()["access_token"]
-        print("✅ Access Token:", access_token)
-        return access_token
+        return response.json()["access_token"]
     else:
-        raise Exception(f"❌ Failed to obtain access token: {response.text}")
+        raise Exception(f"Failed to obtain access token: {response.text}")
 
-# Example usage
+@app.route('/token', methods=['GET'])
+def token_endpoint():
+    try:
+        access_token = get_access_token()
+        return jsonify({
+            "success": True,
+            "access_token": access_token
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 if __name__ == "__main__":
-    get_access_token()
+    app.run(debug=True)
