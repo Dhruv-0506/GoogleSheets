@@ -1,0 +1,26 @@
+name: Get Google Access Token
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-token:
+    runs-on: ubuntu-latest
+
+    env:
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run access token script
+        run: |
+          python3 get_token.py
