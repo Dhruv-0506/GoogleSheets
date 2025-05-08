@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 def get_access_token():
     token_url = "https://oauth2.googleapis.com/token"
-    client_id = "26763482887-q9lcln5nmb0setr60gkohdjrt2msl6o5.apps.googleusercontent.com"
+    client_id = "26763482887-coiufpukc1l69aaulaiov5o0u3en2del.apps.googleusercontent.com"
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     refresh_token = "1//09zxz8WxEV7hpCgYIARAAGAkSNwF-L9IrfoSJ7UYywPUkdJEdW-Jj_bMFoA7HNh109drcwUm0RgaAbxbP-o0Ppnf8v6E_Jmndbjc"
 
