@@ -9,8 +9,8 @@ def exchange_code_for_tokens(authorization_code):
     token_url = "https://oauth2.googleapis.com/token"
     
     client_id = "26763482887-coiufpukc1l69aaulaiov5o0u3en2del.apps.googleusercontent.com"
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")  # Ensure this is set in the platform
-    redirect_uri = "https://serverless.on-demand.io/auth/callback"
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    redirect_uri = "https://serverless.on-demand.io/apps/googlesheets"
 
     payload = {
         "code": authorization_code,
@@ -26,8 +26,8 @@ def exchange_code_for_tokens(authorization_code):
     else:
         raise Exception(f"Failed to get tokens: {response.text}")
 
-# OAuth2 callback route
-@app.route('/auth/callback', methods=['GET'])
+# OAuth callback route
+@app.route('/apps/googlesheets', methods=['GET'])
 def oauth2callback():
     authorization_code = request.args.get('code')
     if authorization_code:
@@ -42,7 +42,7 @@ def oauth2callback():
     else:
         return jsonify({"error": "Authorization code missing"}), 400
 
-# Function to get access token using a refresh token
+# Function to get a new access token using a refresh token
 def get_access_token(refresh_token):
     token_url = "https://oauth2.googleapis.com/token"
     client_id = "26763482887-coiufpukc1l69aaulaiov5o0u3en2del.apps.googleusercontent.com"
@@ -61,7 +61,7 @@ def get_access_token(refresh_token):
     else:
         raise Exception(f"Failed to obtain access token: {response.text}")
 
-# Endpoint to update a cell in Google Sheets
+# Endpoint to update a Google Sheet cell
 @app.route('/apps/googlesheets/edit', methods=['POST'])
 def edit_cell():
     try:
@@ -95,6 +95,6 @@ def edit_cell():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Run the Flask app on the correct host and port
+# Run Flask on port 5000
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    app.run(debug=True, host="0.0.0.0", port=5000)
