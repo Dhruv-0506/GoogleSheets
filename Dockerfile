@@ -23,7 +23,7 @@ EXPOSE 5000
 # Define environment variable for the Google Client Secret
 # You will need to pass this in when running the container,
 # or use other secret management techniques.
-ENV GOOGLE_CLIENT_SECRET=""
+ENV GOOGLE_CLIENT_SECRET="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"
 
 # Command to run the application using Gunicorn
 # --bind 0.0.0.0:5000 : Listen on all interfaces, port 5000
