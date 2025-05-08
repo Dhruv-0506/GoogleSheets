@@ -14,15 +14,17 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --compile -r requirements.txt
 
 # Copy the current directory contents into the container at /app
-# This includes your app.py file and any other necessary files.
+# This includes your Token_Requests.py file and any other necessary files.
 COPY . .
 
 # Make port 5000 available to the world outside this container (Gunicorn will bind to this)
 EXPOSE 5000
 
 # Define environment variable for the Google Client Secret
-# You will need to pass this in when running the container,
-# or use other secret management techniques.
+# IMPORTANT: For production, it's strongly recommended to pass this
+# as an environment variable at runtime (e.g., `docker run -e GOOGLE_CLIENT_SECRET=...`)
+# or use a secrets management system, rather than hardcoding it in the Dockerfile.
+# The value below is just a placeholder based on your previous example.
 ENV GOOGLE_CLIENT_SECRET="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"
 
 # Command to run the application using Gunicorn
@@ -30,8 +32,10 @@ ENV GOOGLE_CLIENT_SECRET="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"
 # --workers 2 : Number of worker processes (adjust as needed, e.g., 2 * num_cores + 1)
 # --threads 4 : Number of threads per worker (adjust as needed)
 # --timeout 120 : Worker timeout in seconds. Important for potentially long API calls.
-# app:app : Tells Gunicorn to run the 'app' Flask instance from the 'app.py' file.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "120", "app:app"]
+# Token_Requests:app : Tells Gunicorn to run the 'app' Flask instance
+#                      from the 'Token_Requests.py' file.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "120", "Token_Requests:app"]
 
-# If you wanted to fall back to the Flask development server for some reason:
-# CMD ["python", "app.py"]
+# If you wanted to fall back to the Flask development server (NOT for production):
+# This assumes your Python file is Token_Requests.py
+# CMD ["python", "Token_Requests.py"]
