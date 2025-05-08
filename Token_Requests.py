@@ -37,7 +37,7 @@ def token_endpoint():
             "error": str(e)
         }), 500
 
-@app.route('/edit', methods=['POST'])
+@app.route('/apps/googlesheets/edit', methods=['POST'])
 def edit_cell():
     try:
         data = request.json
