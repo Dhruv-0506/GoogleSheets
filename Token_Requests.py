@@ -13,7 +13,7 @@ def exchange_code_for_tokens(authorization_code):
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")  # Securely load your client secret
     
     # The redirect URI should be the same as the one you provided in the Developer Console
-    redirect_uri = "https://serverless.on-demand.io/apps/googlesheets"
+    redirect_uri = "https://serverless.on-demand.io/auth/callback"
     
     payload = {
         "code": authorization_code,
@@ -31,7 +31,7 @@ def exchange_code_for_tokens(authorization_code):
         raise Exception(f"Failed to get tokens: {response.text}")
 
 # Route to handle the redirect and capture the authorization code
-@app.route('/apps/googlesheets', methods=['GET'])
+@app.route('/auth/callback', methods=['GET'])
 def oauth2callback():
     authorization_code = request.args.get('code')
 
