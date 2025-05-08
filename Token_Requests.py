@@ -10,7 +10,7 @@ def exchange_code_for_tokens(authorization_code):
     
     client_id = "26763482887-coiufpukc1l69aaulaiov5o0u3en2del.apps.googleusercontent.com"
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-    redirect_uri = "https://serverless.on-demand.io/apps/googlesheets"
+    redirect_uri = "https://serverless.on-demand.io/auth/callback"
 
     payload = {
         "code": authorization_code,
@@ -26,8 +26,8 @@ def exchange_code_for_tokens(authorization_code):
     else:
         raise Exception(f"Failed to get tokens: {response.text}")
 
-# OAuth callback route
-@app.route('/apps/googlesheets', methods=['GET'])
+# OAuth2 callback route
+@app.route('/auth/callback', methods=['GET'])
 def oauth2callback():
     authorization_code = request.args.get('code')
     if authorization_code:
@@ -61,8 +61,8 @@ def get_access_token(refresh_token):
     else:
         raise Exception(f"Failed to obtain access token: {response.text}")
 
-# Endpoint to update a Google Sheet cell
-@app.route('/apps/googlesheets/edit', methods=['POST'])
+# Endpoint to update a Google Sheet cell (still under /auth/callback for consistency)
+@app.route('/auth/callback/edit', methods=['POST'])
 def edit_cell():
     try:
         data = request.json
