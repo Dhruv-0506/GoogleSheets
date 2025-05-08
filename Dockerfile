@@ -1,12 +1,17 @@
 FROM python:3.9-slim-buster
 
-WORKDIR /python-docker
+# Set working directory
+WORKDIR /app
 
-COPY requirements.txt requirements.txt
-RUN pip3 install -r requirements.txt
+# Install dependencies
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
 
+# Copy the rest of the app
 COPY . .
 
-EXPOSE 5000
+# Expose the port that Flask will run on
+EXPOSE 8080
 
-CMD [ "python3", "Token_Requests.py"]
+# Run the Flask app on 0.0.0.0 and port 8080
+CMD ["python3", "Token_Requests.py"]
