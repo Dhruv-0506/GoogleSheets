@@ -1,248 +1,248 @@
 from flask import Flask, jsonify, request
 import os
 import requests
-from google.oauth2.credentials import Credentials
+
+# Imports for Google API
+from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 app = Flask(__name__)
 
-# --- Configuration ---
-# Load from environment variables
-CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+# --- Configuration (Consider moving to environment variables or a config file) ---
+# Client ID from your Google Cloud Console OAuth 2.0 Credentials
+CLIENT_ID = "26763482887-q9lcln5nmb0setr60gkohdjrt2msl6o5.apps.googleusercontent.com"
+# Refresh token obtained through OAuth 2.0 flow
+REFRESH_TOKEN = "1//09zxz8WxEV7hpCgYIARAAGAkSNwF-L9IrfoSJ7UYywPUkdJEdW-Jj_bMFoA7HNh109drcwUm0RgaAbxbP-o0Ppnf8v6E_Jmndbjc"
+# Google Client Secret - SET THIS AS AN ENVIRONMENT VARIABLE
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
-DEFAULT_SPREADSHEET_ID = os.getenv("DEFAULT_SPREADSHEET_ID") # Optional default
 
-TOKEN_URI = "https://oauth2.googleapis.com/token"
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+TOKEN_URL = "https://oauth2.googleapis.com/token"
 
-if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
-    print("ERROR: Ensure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN are set as environment variables.")
-    # exit(1) # Or handle more gracefully
+# --- Helper Functions ---
+def get_access_token():
+    """Obtains a new access token using the refresh token."""
+    if not CLIENT_SECRET:
+        raise ValueError("GOOGLE_CLIENT_SECRET environment variable not set.")
 
-# --- Authentication Helper ---
-def get_credentials():
-    """Gets fresh Google API credentials using the refresh token."""
-    if not CLIENT_ID or not CLIENT_SECRET or not REFRESH_TOKEN:
-        raise ValueError("Client ID, Client Secret, or Refresh Token is missing. Set environment variables.")
+    payload = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "refresh_token": REFRESH_TOKEN,
+        "grant_type": "refresh_token"
+    }
+    response = requests.post(TOKEN_URL, data=payload)
+    response.raise_for_status() # Raises an HTTPError for bad responses (4XX or 5XX)
+    return response.json()["access_token"]
 
-    creds = Credentials(
-        None,  # No access token initially, it will be refreshed
-        refresh_token=REFRESH_TOKEN,
-        token_uri=TOKEN_URI,
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
-        scopes=SCOPES
-    )
-    # The Credentials object will automatically refresh the access token if it's expired or not present.
-    # You can force a refresh if needed:
-    # if not creds.valid:
-    #     if creds.expired and creds.refresh_token:
-    #         creds.refresh(Request())
-    return creds
-
-def get_sheets_service():
-    """Builds and returns a Google Sheets API service object."""
-    credentials = get_credentials()
-    service = build('sheets', 'v4', credentials=credentials)
+def get_sheets_service(access_token):
+    """Builds and returns an authorized Sheets API service instance."""
+    creds = OAuthCredentials(token=access_token)
+    # If your refresh token might expire or be revoked, you might need to handle
+    # refreshing it here or ensure the `creds` object can refresh itself if it had more info.
+    # For this setup, `get_access_token` is called per request or as needed.
+    service = build("sheets", "v4", credentials=creds)
     return service
 
-# --- Raw Access Token Endpoint (as per original request) ---
+# --- Google Sheets API Wrapper Functions (adapted from your snippets) ---
+
+def api_create_spreadsheet(service, title):
+    """Creates a new spreadsheet."""
+    spreadsheet_body = {"properties": {"title": title}}
+    spreadsheet = (
+        service.spreadsheets()
+        .create(body=spreadsheet_body, fields="spreadsheetId,spreadsheetUrl")
+        .execute()
+    )
+    return spreadsheet
+
+def api_get_values(service, spreadsheet_id, range_name):
+    """Gets values from a spreadsheet."""
+    result = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=range_name)
+        .execute()
+    )
+    return result
+
+def api_append_values(service, spreadsheet_id, range_name, value_input_option, values_data):
+    """Appends values to a spreadsheet."""
+    body = {"values": values_data}
+    result = (
+        service.spreadsheets()
+        .values()
+        .append(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+            valueInputOption=value_input_option,
+            body=body,
+            insertDataOption="INSERT_ROWS" # Common option for append
+        )
+        .execute()
+    )
+    return result
+
+def api_update_values(service, spreadsheet_id, range_name, value_input_option, values_data):
+    """Updates values in a spreadsheet."""
+    body = {"values": values_data}
+    result = (
+        service.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+            valueInputOption=value_input_option,
+            body=body,
+        )
+        .execute()
+    )
+    return result
+
+# --- Flask Endpoints ---
+
 @app.route('/token', methods=['GET'])
 def token_endpoint():
-    """Provides the raw access token. Use with caution."""
+    """Returns a fresh access token."""
     try:
-        # This re-implements the token refresh, useful if you need just the token string
-        # For Google API client library usage, get_credentials() is preferred.
-        payload = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "refresh_token": REFRESH_TOKEN,
-            "grant_type": "refresh_token"
-        }
-        response = requests.post(TOKEN_URI, data=payload)
-        response.raise_for_status() # Raises an HTTPError for bad responses (4XX or 5XX)
-        access_token = response.json()["access_token"]
+        access_token = get_access_token()
         return jsonify({
             "success": True,
             "access_token": access_token
         })
-    except requests.exceptions.HTTPError as http_err:
+    except requests.exceptions.HTTPError as e:
         return jsonify({
             "success": False,
-            "error": f"HTTP error obtaining access token: {http_err}",
-            "details": http_err.response.text if http_err.response else "No response details"
-        }), response.status_code
+            "error": "Failed to obtain access token",
+            "details": str(e.response.text if e.response else e)
+        }), 500
     except Exception as e:
         return jsonify({
             "success": False,
             "error": str(e)
         }), 500
 
-# --- Google Sheets API Endpoints ---
-
-@app.route('/sheet/data', methods=['GET'])
-def get_sheet_data():
+@app.route('/spreadsheets/create', methods=['POST'])
+def create_spreadsheet_endpoint():
     """
-    Gets data from a specified range in a Google Sheet.
-    Query Params:
-        spreadsheet_id (str, optional): The ID of the spreadsheet. Uses DEFAULT_SPREADSHEET_ID if not provided.
-        range_name (str, required): The A1 notation of the range to retrieve (e.g., 'Sheet1!A1:B5').
+    Creates a new spreadsheet.
+    JSON Body: {"title": "My New Spreadsheet"}
     """
-    spreadsheet_id = request.args.get('spreadsheet_id', DEFAULT_SPREADSHEET_ID)
-    range_name = request.args.get('range_name')
-
-    if not spreadsheet_id:
-        return jsonify({"success": False, "error": "spreadsheet_id is required if DEFAULT_SPREADSHEET_ID is not set."}), 400
-    if not range_name:
-        return jsonify({"success": False, "error": "range_name query parameter is required."}), 400
-
-    try:
-        service = get_sheets_service()
-        result = service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id,
-            range=range_name
-        ).execute()
-        values = result.get('values', [])
-        return jsonify({"success": True, "spreadsheet_id": spreadsheet_id, "range": range_name, "values": values})
-    except HttpError as e:
-        return jsonify({"success": False, "error": f"Google API Error: {e.resp.status} {e._get_reason()}", "details": e.content.decode()}), e.resp.status
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/sheet/data', methods=['POST'])
-def append_sheet_data():
-    """
-    Appends data to a sheet. The data is appended after the last row with data in the specified range.
-    Query Params:
-        spreadsheet_id (str, optional): The ID of the spreadsheet. Uses DEFAULT_SPREADSHEET_ID if not provided.
-        range_name (str, required): The A1 notation of the range (e.g., 'Sheet1!A1').
-                                    The API will find the first empty row after data in this range.
-    JSON Body:
-        {
-            "values": [
-                ["Row1Col1", "Row1Col2"],
-                ["Row2Col1", "Row2Col2"]
-            ]
-        }
-    """
-    spreadsheet_id = request.args.get('spreadsheet_id', DEFAULT_SPREADSHEET_ID)
-    range_name = request.args.get('range_name') # e.g., "Sheet1" or "Sheet1!A1" to append after table in A column
-
-    if not spreadsheet_id:
-        return jsonify({"success": False, "error": "spreadsheet_id is required if DEFAULT_SPREADSHEET_ID is not set."}), 400
-    if not range_name:
-        return jsonify({"success": False, "error": "range_name query parameter is required."}), 400
-
     try:
         data = request.get_json()
-        if not data or 'values' not in data:
-            return jsonify({"success": False, "error": "JSON body with 'values' array is required."}), 400
+        if not data or "title" not in data:
+            return jsonify({"success": False, "error": "Missing 'title' in request body"}), 400
 
-        values_to_append = data['values']
-        if not isinstance(values_to_append, list):
-            return jsonify({"success": False, "error": "'values' must be an array of arrays."}), 400
-
-        body = {
-            'values': values_to_append
-        }
-        service = get_sheets_service()
-        result = service.spreadsheets().values().append(
-            spreadsheetId=spreadsheet_id,
-            range=range_name,
-            valueInputOption='USER_ENTERED',  # Or 'RAW'
-            insertDataOption='INSERT_ROWS', # Or 'OVERWRITE' if range is specific and you want to replace
-            body=body
-        ).execute()
-        return jsonify({"success": True, "spreadsheet_id": spreadsheet_id, "updates": result.get('updates')})
+        title = data["title"]
+        access_token = get_access_token()
+        service = get_sheets_service(access_token)
+        
+        spreadsheet_info = api_create_spreadsheet(service, title)
+        return jsonify({
+            "success": True,
+            "message": f"Spreadsheet created successfully.",
+            "spreadsheetId": spreadsheet_info.get("spreadsheetId"),
+            "spreadsheetUrl": spreadsheet_info.get("spreadsheetUrl")
+        })
     except HttpError as e:
-        return jsonify({"success": False, "error": f"Google API Error: {e.resp.status} {e._get_reason()}", "details": e.content.decode()}), e.resp.status
+        return jsonify({"success": False, "error": "Google API Error", "details": str(e)}), e.resp.status
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/sheet/data', methods=['PUT'])
-def update_sheet_data():
+@app.route('/spreadsheets/<spreadsheet_id>/values/<path:range_name>', methods=['GET'])
+def get_values_endpoint(spreadsheet_id, range_name):
     """
-    Updates data in a specific range of a Google Sheet.
-    Query Params:
-        spreadsheet_id (str, optional): The ID of the spreadsheet. Uses DEFAULT_SPREADSHEET_ID if not provided.
-        range_name (str, required): The A1 notation of the range to update (e.g., 'Sheet1!A1:B2').
-    JSON Body:
-        {
-            "values": [
-                ["UpdatedVal1", "UpdatedVal2"],
-                ["UpdatedVal3", "UpdatedVal4"]
-            ]
-        }
+    Gets values from a specific range in a spreadsheet.
+    Example: /spreadsheets/your_sheet_id/values/Sheet1!A1:B5
     """
-    spreadsheet_id = request.args.get('spreadsheet_id', DEFAULT_SPREADSHEET_ID)
-    range_name = request.args.get('range_name')
+    try:
+        access_token = get_access_token()
+        service = get_sheets_service(access_token)
+        
+        result = api_get_values(service, spreadsheet_id, range_name)
+        return jsonify({
+            "success": True,
+            "range": result.get("range"),
+            "values": result.get("values", [])
+        })
+    except HttpError as e:
+        return jsonify({"success": False, "error": "Google API Error", "details": str(e)}), e.resp.status
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
-    if not spreadsheet_id:
-        return jsonify({"success": False, "error": "spreadsheet_id is required if DEFAULT_SPREADSHEET_ID is not set."}), 400
-    if not range_name:
-        return jsonify({"success": False, "error": "range_name query parameter is required."}), 400
-
+@app.route('/spreadsheets/<spreadsheet_id>/values/append', methods=['POST'])
+def append_values_endpoint(spreadsheet_id):
+    """
+    Appends values to a sheet.
+    JSON Body: {
+        "range": "Sheet1!A1", // The sheet and starting cell, e.g., "Sheet1" or "Sheet1!A1"
+        "valueInputOption": "USER_ENTERED" or "RAW",
+        "values": [["Row1Col1", "Row1Col2"], ["Row2Col1", "Row2Col2"]]
+    }
+    """
     try:
         data = request.get_json()
-        if not data or 'values' not in data:
-            return jsonify({"success": False, "error": "JSON body with 'values' array is required."}), 400
+        if not data or not all(k in data for k in ("range", "valueInputOption", "values")):
+            return jsonify({"success": False, "error": "Missing 'range', 'valueInputOption', or 'values' in request body"}), 400
 
-        values_to_update = data['values']
-        if not isinstance(values_to_update, list):
-            return jsonify({"success": False, "error": "'values' must be an array of arrays."}), 400
+        range_name = data["range"]
+        value_input_option = data["valueInputOption"]
+        values_data = data["values"]
 
-        body = {
-            'values': values_to_update
-        }
-        service = get_sheets_service()
-        result = service.spreadsheets().values().update(
-            spreadsheetId=spreadsheet_id,
-            range=range_name,
-            valueInputOption='USER_ENTERED',  # Or 'RAW'
-            body=body
-        ).execute()
-        return jsonify({"success": True, "spreadsheet_id": spreadsheet_id, "updated_range": result.get('updatedRange')})
+        access_token = get_access_token()
+        service = get_sheets_service(access_token)
+        
+        result = api_append_values(service, spreadsheet_id, range_name, value_input_option, values_data)
+        return jsonify({
+            "success": True,
+            "message": f"{result.get('updates', {}).get('updatedCells', 0)} cells appended.",
+            "updatedRange": result.get('updates', {}).get('updatedRange')
+        })
     except HttpError as e:
-        return jsonify({"success": False, "error": f"Google API Error: {e.resp.status} {e._get_reason()}", "details": e.content.decode()}), e.resp.status
+        return jsonify({"success": False, "error": "Google API Error", "details": str(e)}), e.resp.status
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/sheet/data', methods=['DELETE'])
-def clear_sheet_data():
+@app.route('/spreadsheets/<spreadsheet_id>/values/update', methods=['PUT']) # Or POST
+def update_values_endpoint(spreadsheet_id):
     """
-    Clears data from a specific range in a Google Sheet.
-    Query Params:
-        spreadsheet_id (str, optional): The ID of the spreadsheet. Uses DEFAULT_SPREADSHEET_ID if not provided.
-        range_name (str, required): The A1 notation of the range to clear (e.g., 'Sheet1!A1:B10').
+    Updates values in a specific range of a sheet.
+    JSON Body: {
+        "range": "Sheet1!A1:B2", // The exact range to update
+        "valueInputOption": "USER_ENTERED" or "RAW",
+        "values": [["NewA1", "NewB1"], ["NewA2", "NewB2"]]
+    }
     """
-    spreadsheet_id = request.args.get('spreadsheet_id', DEFAULT_SPREADSHEET_ID)
-    range_name = request.args.get('range_name')
-
-    if not spreadsheet_id:
-        return jsonify({"success": False, "error": "spreadsheet_id is required if DEFAULT_SPREADSHEET_ID is not set."}), 400
-    if not range_name:
-        return jsonify({"success": False, "error": "range_name query parameter is required."}), 400
-
     try:
-        service = get_sheets_service()
-        result = service.spreadsheets().values().clear(
-            spreadsheetId=spreadsheet_id,
-            range=range_name,
-            body={} # Body is required, even if empty for clear
-        ).execute()
-        return jsonify({"success": True, "spreadsheet_id": spreadsheet_id, "cleared_range": result.get('clearedRangeId') or range_name})
+        data = request.get_json()
+        if not data or not all(k in data for k in ("range", "valueInputOption", "values")):
+            return jsonify({"success": False, "error": "Missing 'range', 'valueInputOption', or 'values' in request body"}), 400
+        
+        range_name = data["range"]
+        value_input_option = data["valueInputOption"]
+        values_data = data["values"]
+
+        access_token = get_access_token()
+        service = get_sheets_service(access_token)
+        
+        result = api_update_values(service, spreadsheet_id, range_name, value_input_option, values_data)
+        return jsonify({
+            "success": True,
+            "message": f"{result.get('updatedCells', 0)} cells updated.",
+            "updatedRange": result.get('updatedRange')
+        })
     except HttpError as e:
-        return jsonify({"success": False, "error": f"Google API Error: {e.resp.status} {e._get_reason()}", "details": e.content.decode()}), e.resp.status
+        return jsonify({"success": False, "error": "Google API Error", "details": str(e)}), e.resp.status
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 if __name__ == "__main__":
-    if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
-        print("CRITICAL ERROR: Missing Google API credentials in environment variables.")
-        print("Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN.")
+    if not CLIENT_SECRET:
+        print("Error: GOOGLE_CLIENT_SECRET environment variable is not set.")
+        print("Please set it before running the application.")
+        print("Example: export GOOGLE_CLIENT_SECRET='your_actual_secret_here'")
     else:
-        print(f"Flask app running. Default Spreadsheet ID: {DEFAULT_SPREADSHEET_ID or 'Not Set'}")
-        print("Ensure your refresh token has 'https://www.googleapis.com/auth/spreadsheets' scope.")
-        app.run(debug=True, port=5000) # Port 5000 is common for Flask, 8080 is often Gunicorn default
+        # Host 0.0.0.0 makes it accessible on your network, useful for testing from other devices.
+        # Remove if you only want localhost access.
+        app.run(host="0.0.0.0", port=5000, debug=True)
