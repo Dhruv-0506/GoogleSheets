@@ -281,15 +281,16 @@ def append_rows_endpoint(spreadsheet_id):
     except HttpError as e: error_content = e.content.decode('utf-8') if e.content else str(e); logger.error(f"ENDPOINT {endpoint_name}: Google API HttpError: {error_content}", exc_info=True); return jsonify({"success": False, "error": "Google API Error", "details": error_content}), e.resp.status
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 
-@app.route('/sheets/<spreadsheet_id>/rows/delete', methods=['POST'])
-def delete_rows_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/rows/delete"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/rows/delete', methods=['POST'])
+def delete_rows_endpoint():
+    
     try:
         data = request.json; logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
         if not all(k in data for k in ('sheet_id', 'start_row_index', 'end_row_index', 'refresh_token')):
             logger.warning(f"ENDPOINT {endpoint_name}: Missing required fields.")
             return jsonify({"success": False, "error": "Missing 'sheet_id', 'start_row_index', 'end_row_index', or 'refresh_token'"}), 400
         sheet_id = int(data['sheet_id']); start_row_index = int(data['start_row_index']); end_row_index = int(data['end_row_index']); refresh_token = data['refresh_token']
+        endpoint_name = f"/sheets/{sheet_id}/rows/delete"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
         if start_row_index < 0 or end_row_index <= start_row_index:
             logger.warning(f"ENDPOINT {endpoint_name}: Invalid row indices.")
             return jsonify({"success": False, "error": "Invalid 'start_row_index' or 'end_row_index'. Ensure start < end and both >= 0."}), 400
