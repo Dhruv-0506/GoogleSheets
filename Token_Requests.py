@@ -43,7 +43,7 @@ def exchange_code_for_tokens(authorization_code):
         response.raise_for_status()
         token_data = response.json()
         duration = time.time() - start_time
-        if token_data.get("access_token") and token_data.get("refresh_token"):
+        if token_data.get("access_token"): #and token_data.get("refresh_token"):
             logger.info(f"Successfully exchanged code for tokens in {duration:.2f} seconds.")
             return token_data
         else:
