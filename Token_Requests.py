@@ -21,7 +21,7 @@ app = Flask(__name__)
 
 # --- Configuration (Main App) ---
 CLIENT_ID = "26763482887-coiufpukc1l69aaulaiov5o0u3en2del.apps.googleusercontent.com"
-CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+CLIENT_SECRET = "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"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 REDIRECT_URI = "https://serverless.on-demand.io/auth/callback"
 REQUEST_TIMEOUT_SECONDS = 30
