@@ -336,11 +336,12 @@ def clear_values_endpoint(spreadsheet_id):
     except HttpError as e: error_content = e.content.decode('utf-8') if e.content else str(e); logger.error(f"ENDPOINT {endpoint_name}: Google API HttpError: {error_content}", exc_info=True); return jsonify({"success": False, "error": "Google API Error", "details": error_content}), e.resp.status
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 
-@app.route('/sheets/<spreadsheet_id>/metadata', methods=['GET'])
+@app.route('/sheets/<spreadsheet_id>/metadata', methods=['POST'])
 def get_metadata_endpoint(spreadsheet_id):
+    data = request.get_json()
+    refresh_token = data.get('refresh_token')
     endpoint_name = f"/sheets/{spreadsheet_id}/metadata"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
     try:
-        refresh_token = request.args.get('refresh_token')
         if not refresh_token:
             logger.warning(f"ENDPOINT {endpoint_name}: Missing 'refresh_token' query parameter.")
             return jsonify({"success": False, "error": "Missing 'refresh_token' query parameter"}), 400
