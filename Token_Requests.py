@@ -339,7 +339,7 @@ def clear_values_endpoint(spreadsheet_id):
 @app.route('/sheets/<spreadsheet_id>/metadata', methods=['POST'])
 def get_metadata_endpoint(spreadsheet_id):
     data = request.json
-    refresh_token = data.get('refresh_token')
+    refresh_token = data['refresh_token']
     endpoint_name = f"/sheets/{spreadsheet_id}/metadata"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
     try:
         if not refresh_token:
