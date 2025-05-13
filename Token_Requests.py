@@ -364,6 +364,227 @@ def specific_user_token_endpoint():
     except Exception as e:
         logger.error(f"ENDPOINT {endpoint_name}: Failed to get specific user access token: {str(e)}", exc_info=True)
         return jsonify({"success": False, "error": f"Failed to obtain access token: {str(e)}"}), 500
+#___________________________________________________________________________________________________________________
+# --- Helper function to get sheetId from sheetName ---
+def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
+    """Gets the numeric sheetId for a given sheet name."""
+    logger.info(f"Attempting to find sheetId for sheet name '{sheet_name}' in spreadsheet '{spreadsheet_id}'.")
+    try:
+        metadata = api_get_spreadsheet_metadata(service, spreadsheet_id) # Assumes you have api_get_spreadsheet_metadata
+        for sheet_prop in metadata.get('sheets', []):
+            properties = sheet_prop.get('properties', {})
+            if properties.get('title') == sheet_name:
+                sheet_id = properties.get('sheetId')
+                if sheet_id is not None:
+                    logger.info(f"Found sheetId {sheet_id} for sheet name '{sheet_name}'.")
+                    return sheet_id
+        logger.warning(f"Sheet name '{sheet_name}' not found in spreadsheet '{spreadsheet_id}'. Metadata: {metadata}")
+        return None
+    except Exception as e:
+        logger.error(f"Error getting sheetId for sheet name '{sheet_name}': {str(e)}", exc_info=True)
+        raise
+
+
+@app.route('/sheets/<spreadsheet_id>/deduplicate', methods=['POST'])
+def deduplicate_sheet_rows_endpoint(spreadsheet_id):
+    endpoint_name = f"/sheets/{spreadsheet_id}/deduplicate"
+    logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+
+    try:
+        data = request.json
+        logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
+
+        required_fields = ['refresh_token', 'key_columns']
+        if not (data.get('sheet_name') or data.get('sheet_id') is not None):
+            logger.warning(f"ENDPOINT {endpoint_name}: Missing 'sheet_name' or 'sheet_id'.")
+            return jsonify({"success": False, "error": "Missing 'sheet_name' or 'sheet_id'"}), 400
+        if not all(k in data for k in required_fields):
+            logger.warning(f"ENDPOINT {endpoint_name}: Missing required fields among {required_fields}.")
+            return jsonify({"success": False, "error": f"Missing one or more required fields: {', '.join(required_fields)}"}), 400
+
+        refresh_token = data['refresh_token']
+        key_column_indices = data['key_columns']
+        sheet_name_param = data.get('sheet_name')
+        sheet_id_param = data.get('sheet_id') # User can provide numeric sheetId directly
+        header_rows_count = int(data.get('header_rows', 1)) # Default to 1 header row
+        keep_option = data.get('keep', 'first').lower() # 'first' or 'last'
+
+        if not isinstance(key_column_indices, list) or not all(isinstance(i, int) and i >= 0 for i in key_column_indices):
+            logger.warning(f"ENDPOINT {endpoint_name}: 'key_columns' must be a list of non-negative integers.")
+            return jsonify({"success": False, "error": "'key_columns' must be a list of non-negative integers (0-based column indices)."}), 400
+        if not key_column_indices:
+            logger.warning(f"ENDPOINT {endpoint_name}: 'key_columns' cannot be empty.")
+            return jsonify({"success": False, "error": "'key_columns' cannot be empty."}), 400
+        if keep_option not in ['first', 'last']:
+            logger.warning(f"ENDPOINT {endpoint_name}: Invalid 'keep' option. Must be 'first' or 'last'.")
+            return jsonify({"success": False, "error": "Invalid 'keep' option. Must be 'first' or 'last'."}), 400
+
+        access_token = get_access_token(refresh_token)
+        service = get_sheets_service(access_token)
+
+        # --- Determine numeric sheet_id ---
+        numeric_sheet_id = None
+        sheet_identifier_for_get_api = None # This will be used for fetching values (e.g., "Sheet1")
+
+        if sheet_id_param is not None:
+            try:
+                numeric_sheet_id = int(sheet_id_param)
+                # To get values, we still need a name if possible, or we need to find it if we only have id
+                # For simplicity, if sheet_id is given, we fetch metadata to find its name for values().get()
+                # or construct a range like "!R1C1" which is less common for full sheet.
+                # A safer bet is to get metadata and find the title for the given sheetId.
+                metadata = api_get_spreadsheet_metadata(service, spreadsheet_id)
+                found_sheet = next((s['properties'] for s in metadata.get('sheets', []) if s['properties']['sheetId'] == numeric_sheet_id), None)
+                if not found_sheet:
+                    logger.error(f"ENDPOINT {endpoint_name}: Provided sheet_id {numeric_sheet_id} not found in spreadsheet.")
+                    return jsonify({"success": False, "error": f"Sheet with ID {numeric_sheet_id} not found."}), 404
+                sheet_identifier_for_get_api = found_sheet['title']
+                logger.info(f"Using provided sheet_id: {numeric_sheet_id} (Title: {sheet_identifier_for_get_api}).")
+            except ValueError:
+                logger.error(f"ENDPOINT {endpoint_name}: Invalid 'sheet_id' provided, not an integer: {sheet_id_param}")
+                return jsonify({"success": False, "error": f"Invalid 'sheet_id': {sheet_id_param}. Must be an integer."}), 400
+        elif sheet_name_param:
+            numeric_sheet_id = get_sheet_id_by_name(service, spreadsheet_id, sheet_name_param)
+            if numeric_sheet_id is None:
+                logger.error(f"ENDPOINT {endpoint_name}: Sheet name '{sheet_name_param}' not found.")
+                return jsonify({"success": False, "error": f"Sheet name '{sheet_name_param}' not found."}), 404
+            sheet_identifier_for_get_api = sheet_name_param
+            logger.info(f"Using sheet_name: '{sheet_name_param}', found sheet_id: {numeric_sheet_id}.")
+        else: # Should be caught by initial check, but defensive
+            return jsonify({"success": False, "error": "Sheet identifier (name or id) is missing."}), 400
+
+        # --- Get all data from the sheet ---
+        # Fetching a wide range. Adjust if your sheets are wider.
+        # Ensure sheet_identifier_for_get_api is properly quoted if it contains spaces or special chars.
+        # The API client library usually handles this for sheet names.
+        range_to_get = f"'{sheet_identifier_for_get_api}'!A:ZZ" # Fetch all columns
+        logger.info(f"ENDPOINT {endpoint_name}: Fetching data from range: {range_to_get}")
+        try:
+            result = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=range_to_get).execute()
+        except HttpError as he_get:
+            if he_get.resp.status == 400 and "Unable to parse range" in str(he_get):
+                 # Fallback for sheets with no data, or very new sheets if A:ZZ is too much
+                 logger.warning(f"ENDPOINT {endpoint_name}: Could not parse range '{range_to_get}'. Trying to fetch just '{sheet_identifier_for_get_api}'.")
+                 result = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=sheet_identifier_for_get_api).execute()
+            else:
+                raise
+        all_rows_from_sheet = result.get('values', [])
+        if not all_rows_from_sheet:
+            logger.info(f"ENDPOINT {endpoint_name}: Sheet '{sheet_identifier_for_get_api}' is empty or contains no data. No deduplication needed.")
+            return jsonify({"success": True, "message": "Sheet is empty, no duplicates to remove.", "rows_deleted_count": 0})
+
+        logger.info(f"ENDPOINT {endpoint_name}: Fetched {len(all_rows_from_sheet)} rows from sheet '{sheet_identifier_for_get_api}'.")
+
+        # --- Identify duplicate rows ---
+        data_rows_with_original_indices = []
+        for i, row_content in enumerate(all_rows_from_sheet):
+            if i >= header_rows_count:
+                data_rows_with_original_indices.append({'data': row_content, 'original_index_in_sheet': i})
+
+        if not data_rows_with_original_indices:
+            logger.info(f"ENDPOINT {endpoint_name}: No data rows found after skipping {header_rows_count} header row(s).")
+            return jsonify({"success": True, "message": "No data rows to process after headers.", "rows_deleted_count": 0})
+
+        seen_keys = {}  # Stores composite_key -> original_index_in_sheet
+        indices_to_delete_0_based = [] # Stores 0-based sheet indices of rows to delete
+
+        max_key_col_index = max(key_column_indices)
+
+        for row_info in data_rows_with_original_indices:
+            row_data = row_info['data']
+            current_original_index = row_info['original_index_in_sheet']
+            
+            # Construct composite key
+            composite_key_parts = []
+            valid_key = True
+            if len(row_data) <= max_key_col_index: # Check if row is long enough for all key columns
+                # Row is shorter than the max key column index, consider how to handle
+                # Option 1: Treat as unique (skip for dedupe based on these keys)
+                # Option 2: Pad with a special value to form key
+                # Option 3: Log and skip (for now, let's log and treat as if its key can't be fully formed)
+                logger.debug(f"Row {current_original_index} is too short (len {len(row_data)}) for key columns up to index {max_key_col_index}. Skipping this row for deduplication based on full key.")
+                # This row won't be marked as a duplicate of another, nor will it mark others as duplicates
+                # if the missing key part is essential.
+                # A more robust approach might involve defining behavior for partial keys or rows not meeting key criteria.
+                # For simplicity, we construct the key with available parts, it might lead to more "unique" keys if short.
+                for k_idx in key_column_indices:
+                    if k_idx < len(row_data):
+                        composite_key_parts.append(row_data[k_idx])
+                    else:
+                        composite_key_parts.append(None) # Or some placeholder for missing cell
+            else:
+                for k_idx in key_column_indices:
+                    composite_key_parts.append(row_data[k_idx])
+            
+            composite_key = tuple(composite_key_parts)
+
+            if composite_key in seen_keys:
+                if keep_option == 'first':
+                    indices_to_delete_0_based.append(current_original_index)
+                elif keep_option == 'last':
+                    indices_to_delete_0_based.append(seen_keys[composite_key]) # Add previous one to delete list
+                    seen_keys[composite_key] = current_original_index # Update to keep current
+            else:
+                seen_keys[composite_key] = current_original_index
+
+        if not indices_to_delete_0_based:
+            logger.info(f"ENDPOINT {endpoint_name}: No duplicate rows found based on specified criteria.")
+            return jsonify({"success": True, "message": "No duplicate rows found.", "rows_deleted_count": 0})
+
+        # Sort indices in descending order to avoid shifting issues during deletion
+        indices_to_delete_0_based.sort(reverse=True)
+        # Remove duplicates from the list of indices to delete (if 'last' option caused multiple adds of same old index)
+        indices_to_delete_0_based = sorted(list(set(indices_to_delete_0_based)), reverse=True)
+
+
+        logger.info(f"ENDPOINT {endpoint_name}: Identified {len(indices_to_delete_0_based)} rows for deletion. Indices: {indices_to_delete_0_based}")
+
+        # --- Perform batch deletion ---
+        delete_requests = []
+        for row_idx_to_delete in indices_to_delete_0_based:
+            delete_requests.append({
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": numeric_sheet_id,
+                        "dimension": "ROWS",
+                        "startIndex": row_idx_to_delete,    # 0-indexed
+                        "endIndex": row_idx_to_delete + 1  # endIndex is exclusive
+                    }
+                }
+            })
+        
+        if delete_requests:
+            body = {"requests": delete_requests}
+            logger.info(f"ENDPOINT {endpoint_name}: Sending batchUpdate to delete {len(delete_requests)} rows.")
+            start_time_delete = time.time()
+            service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+            duration_delete = time.time() - start_time_delete
+            logger.info(f"ENDPOINT {endpoint_name}: Batch deletion successful in {duration_delete:.2f}s.")
+        
+        return jsonify({
+            "success": True, 
+            "message": f"Deduplication complete. {len(indices_to_delete_0_based)} row(s) removed.",
+            "rows_deleted_count": len(indices_to_delete_0_based),
+            "deleted_row_indices_0_based": indices_to_delete_0_based
+        })
+
+    except HttpError as e:
+        error_content = e.content.decode('utf-8') if e.content else str(e)
+        logger.error(f"ENDPOINT {endpoint_name}: Google API HttpError: {error_content}", exc_info=True)
+        return jsonify({"success": False, "error": "Google API Error", "details": error_content}), e.resp.status if hasattr(e, 'resp') else 500
+    except ValueError as ve: # Catches int conversion errors for header_rows, sheet_id
+        logger.error(f"ENDPOINT {endpoint_name}: Value error: {str(ve)}", exc_info=True)
+        return jsonify({"success": False, "error": f"Invalid input value: {str(ve)}"}), 400
+    except Exception as e:
+        logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
+#____________________________________________________________________________________________________________________________________________________________________________________#
+
+
+
+
+
+
 
 
 # Run Flask
