@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # --- Configuration (Main App) ---
-CLIENT_ID = "26763482887-coiufpukc1l69aaulaiov5o0u3en2del.apps.googleusercontent.com"
-CLIENT_SECRET = "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"
+CLIENT_ID = "279113184789-n4u9s08ttu3kvk2qsr9cu8dpt08o1l9q.apps.googleusercontent.com"
+CLIENT_SECRET = GOOGLE_CLIENT_SECRET
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 REDIRECT_URI = "https://serverless.on-demand.io/apps/googlesheets/auth/callback"
 REQUEST_TIMEOUT_SECONDS = 30
