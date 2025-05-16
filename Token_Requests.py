@@ -281,14 +281,16 @@ def oauth2callback_endpoint():
         logger.warning(f"ENDPOINT {endpoint_name}: Authorization code missing in request.")
         return jsonify({"error": "Authorization code missing"}), 400
 
-@app.route('/sheets/<spreadsheet_id>/cell/update', methods=['POST'])
-def update_cell_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/cell/update"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/cell/update', methods=['POST'])
+def update_cell_endpoint():
+    
     try:
-        data = request.json; logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
+        data = request.json; logger.debug(f"ENDPOINT : Request body: {data}")
         if not data or not all(k in data for k in ('cell_range', 'new_value', 'refresh_token')): # Check if data is None
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing required fields in JSON body.")
+            logger.warning(f"ENDPOINT : Missing required fields in JSON body.")
             return jsonify({"success": False, "error": "Missing 'cell_range', 'new_value', or 'refresh_token' in JSON body"}), 400
+        spreadsheet_id = data['spreadsheet_id']
+        endpoint_name = f"/sheets/{spreadsheet_id}/cell/update"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
         cell_range = data['cell_range']; new_value = data['new_value']; refresh_token = data['refresh_token']
         value_input_option = data.get('value_input_option', "USER_ENTERED")
         access_token = get_access_token(refresh_token); service = get_sheets_service(access_token)
@@ -299,19 +301,21 @@ def update_cell_endpoint(spreadsheet_id):
     except ValueError as ve: logger.error(f"ENDPOINT {endpoint_name}: Value error: {str(ve)}", exc_info=True); return jsonify({"success": False, "error": f"Input or authentication error: {str(ve)}"}), 400
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 
-@app.route('/sheets/<spreadsheet_id>/rows/append', methods=['POST'])
-def append_rows_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/rows/append"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/rows/append', methods=['POST'])
+def append_rows_endpoint():
+    
     try:
-        data = request.json; logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
+        data = request.json; logger.debug(f"ENDPOINT : Request body: {data}")
         if not data or not all(k in data for k in ('range_name', 'values_data', 'refresh_token')):
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing required fields in JSON body.")
+            logger.warning(f"ENDPOINT : Missing required fields in JSON body.")
             return jsonify({"success": False, "error": "Missing 'range_name', 'values_data', or 'refresh_token' in JSON body"}), 400
         range_name = data['range_name']; values_data = data['values_data']; refresh_token = data['refresh_token']
         value_input_option = data.get('value_input_option', "USER_ENTERED")
         if not isinstance(values_data, list) or not all(isinstance(row, list) for row in values_data):
             logger.warning(f"ENDPOINT {endpoint_name}: 'values_data' is not a list of lists.")
             return jsonify({"success": False, "error": "'values_data' must be a list of lists (rows of cells)."}), 400
+        spreadsheet_id = data['spreadsheet_id']
+        endpoint_name = f"/sheets/{spreadsheet_id}/rows/append"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
         access_token = get_access_token(refresh_token); service = get_sheets_service(access_token)
         result = api_append_rows(service, spreadsheet_id, range_name, values_data, value_input_option)
         logger.info(f"ENDPOINT {endpoint_name}: Row append successful.")
@@ -321,20 +325,22 @@ def append_rows_endpoint(spreadsheet_id):
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 
 # --- NEW: Endpoint to get values ---
-@app.route('/sheets/<spreadsheet_id>/values/get', methods=['POST'])
-def get_values_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/values/get"
-    logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/values/get', methods=['POST'])
+def get_values_endpoint():
+    
+    logger.info(f"ENDPOINT : Request received.")
     try:
         data = request.json
-        logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
+        logger.debug(f"ENDPOINT : Request body: {data}")
         if not data or not all(k in data for k in ('range_name', 'refresh_token')):
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing 'range_name' or 'refresh_token' in JSON body.")
+            logger.warning(f"ENDPOINT : Missing 'range_name' or 'refresh_token' in JSON body.")
             return jsonify({"success": False, "error": "Missing 'range_name' or 'refresh_token' in JSON body"}), 400
         range_name = data['range_name']; refresh_token = data['refresh_token']
         if not range_name:
-            logger.warning(f"ENDPOINT {endpoint_name}: 'range_name' cannot be empty.")
+            logger.warning(f"ENDPOINT : 'range_name' cannot be empty.")
             return jsonify({"success": False, "error": "'range_name' cannot be empty"}), 400
+        spreadsheet_id = data['spreadsheet_id']
+        endpoint_name = f"/sheets/{spreadsheet_id}/values/get"
         access_token = get_access_token(refresh_token) 
         service = get_sheets_service(access_token)
         values = api_get_values(service, spreadsheet_id, range_name)
@@ -345,18 +351,20 @@ def get_values_endpoint(spreadsheet_id):
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 # --- END NEW ---
 
-@app.route('/sheets/<spreadsheet_id>/rows/delete', methods=['POST'])
-def delete_rows_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/rows/delete"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/rows/delete', methods=['POST'])
+def delete_rows_endpoint():
+    
     try:
-        data = request.json; logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
+        data = request.json; logger.debug(f"ENDPOINT : Request body: {data}")
         if not data or not all(k in data for k in ('sheet_id', 'start_row_index', 'end_row_index', 'refresh_token')):
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing required fields in JSON body.")
+            logger.warning(f"ENDPOINT : Missing required fields in JSON body.")
             return jsonify({"success": False, "error": "Missing 'sheet_id', 'start_row_index', 'end_row_index', or 'refresh_token' in JSON body"}), 400
         sheet_id = int(data['sheet_id']); start_row_index = int(data['start_row_index']); end_row_index = int(data['end_row_index']); refresh_token = data['refresh_token']
         if start_row_index < 0 or end_row_index <= start_row_index:
-            logger.warning(f"ENDPOINT {endpoint_name}: Invalid row indices.")
+            logger.warning(f"ENDPOINT : Invalid row indices.")
             return jsonify({"success": False, "error": "Invalid 'start_row_index' or 'end_row_index'. Ensure start < end and both >= 0."}), 400
+        spreadsheet_id = data['spreadsheet_id']
+        endpoint_name = f"/sheets/{spreadsheet_id}/rows/delete"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
         access_token = get_access_token(refresh_token); service = get_sheets_service(access_token)
         result = api_delete_rows(service, spreadsheet_id, sheet_id, start_row_index, end_row_index)
         logger.info(f"ENDPOINT {endpoint_name}: Row deletion request successful.")
@@ -365,14 +373,16 @@ def delete_rows_endpoint(spreadsheet_id):
     except HttpError as e: error_content = e.content.decode('utf-8', 'ignore') if e.content else str(e); logger.error(f"ENDPOINT {endpoint_name}: Google API HttpError: {error_content}", exc_info=True); return jsonify({"success": False, "error": "Google API Error", "details": error_content}), e.resp.status if hasattr(e, 'resp') and e.resp else 500
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 
-@app.route('/sheets/<spreadsheet_id>/tabs/create', methods=['POST'])
-def create_tab_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/tabs/create"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/tabs/create', methods=['POST'])
+def create_tab_endpoint():
+    
     try:
-        data = request.json; logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
+        data = request.json; logger.debug(f"ENDPOINT : Request body: {data}")
         if not data or not all(k in data for k in ('new_sheet_title', 'refresh_token')):
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing required fields in JSON body.")
+            logger.warning(f"ENDPOINT : Missing required fields in JSON body.")
             return jsonify({"success": False, "error": "Missing 'new_sheet_title' or 'refresh_token' in JSON body"}), 400
+        spreadsheet_id = data['spreadsheet_id']
+        endpoint_name = f"/sheets/{spreadsheet_id}/tabs/create"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
         new_sheet_title = data['new_sheet_title']; refresh_token = data['refresh_token']
         access_token = get_access_token(refresh_token); service = get_sheets_service(access_token)
         result = api_create_new_tab(service, spreadsheet_id, new_sheet_title)
@@ -383,14 +393,16 @@ def create_tab_endpoint(spreadsheet_id):
     except ValueError as ve: logger.error(f"ENDPOINT {endpoint_name}: Value error: {str(ve)}", exc_info=True); return jsonify({"success": False, "error": f"Input or authentication error: {str(ve)}"}), 400
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 
-@app.route('/sheets/<spreadsheet_id>/values/clear', methods=['POST'])
-def clear_values_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/values/clear"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/values/clear', methods=['POST'])
+def clear_values_endpoint():
+    
     try:
-        data = request.json; logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
+        data = request.json; logger.debug(f"ENDPOINT : Request body: {data}")
         if not data or not all(k in data for k in ('range_name', 'refresh_token')):
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing required fields in JSON body.")
+            logger.warning(f"ENDPOINT: Missing required fields in JSON body.")
             return jsonify({"success": False, "error": "Missing 'range_name' or 'refresh_token' in JSON body"}), 400
+        spreadsheet_id = data['spreadsheet_id']
+        endpoint_name = f"/sheets/{spreadsheet_id}/values/clear"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
         range_name = data['range_name']; refresh_token = data['refresh_token']
         access_token = get_access_token(refresh_token); service = get_sheets_service(access_token)
         result = api_clear_values(service, spreadsheet_id, range_name)
@@ -400,15 +412,17 @@ def clear_values_endpoint(spreadsheet_id):
     except ValueError as ve: logger.error(f"ENDPOINT {endpoint_name}: Value error: {str(ve)}", exc_info=True); return jsonify({"success": False, "error": f"Input or authentication error: {str(ve)}"}), 400
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 
-@app.route('/sheets/<spreadsheet_id>/metadata', methods=['POST'])
-def get_metadata_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/metadata"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/metadata', methods=['POST'])
+def get_metadata_endpoint():
+    
     try:
         data = request.json # Changed to get refresh_token from JSON body
-        logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
+        logger.debug(f"ENDPOINT : Request body: {data}")
         if not data or 'refresh_token' not in data:
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing 'refresh_token' in JSON body.")
+            logger.warning(f"ENDPOINT: Missing 'refresh_token' in JSON body.")
             return jsonify({"success": False, "error": "Missing 'refresh_token' in JSON body"}), 400
+        spreadsheet_id = data['spreadsheet_id']
+        endpoint_name = f"/sheets/{spreadsheet_id}/metadata"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
         refresh_token = data['refresh_token']
         access_token = get_access_token(refresh_token); service = get_sheets_service(access_token)
         metadata = api_get_spreadsheet_metadata(service, spreadsheet_id)
@@ -452,17 +466,17 @@ def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
         logger.error(f"Error getting sheetId for sheet name '{sheet_name}': {str(e)}", exc_info=True)
         raise # Re-raise to be caught by the endpoint's general exception handler
 
-@app.route('/sheets/<spreadsheet_id>/deduplicate', methods=['POST'])
-def deduplicate_sheet_rows_endpoint(spreadsheet_id):
-    endpoint_name = f"/sheets/{spreadsheet_id}/deduplicate"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
+@app.route('/sheets/deduplicate', methods=['POST'])
+def deduplicate_sheet_rows_endpoint():
+    
     try:
         data = request.json; logger.debug(f"ENDPOINT {endpoint_name}: Request body: {data}")
         required_fields = ['refresh_token', 'key_columns']
         if not data or not (data.get('sheet_name') or data.get('sheet_id') is not None):
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing 'sheet_name' or 'sheet_id' in JSON body.")
+            logger.warning(f"ENDPOINT: Missing 'sheet_name' or 'sheet_id' in JSON body.")
             return jsonify({"success": False, "error": "Missing 'sheet_name' or 'sheet_id' in JSON body"}), 400
         if not all(k in data for k in required_fields):
-            logger.warning(f"ENDPOINT {endpoint_name}: Missing required fields among {required_fields} in JSON body.")
+            logger.warning(f"ENDPOINT : Missing required fields among {required_fields} in JSON body.")
             return jsonify({"success": False, "error": f"Missing one or more required fields: {', '.join(required_fields)} in JSON body"}), 400
         refresh_token = data['refresh_token']; key_column_indices = data['key_columns']
         sheet_name_param = data.get('sheet_name'); sheet_id_param = data.get('sheet_id')
@@ -471,6 +485,9 @@ def deduplicate_sheet_rows_endpoint(spreadsheet_id):
             return jsonify({"success": False, "error": "'key_columns' must be a list of non-negative integers (0-based column indices)."}), 400
         if not key_column_indices: return jsonify({"success": False, "error": "'key_columns' cannot be empty."}), 400
         if keep_option not in ['first', 'last']: return jsonify({"success": False, "error": "Invalid 'keep' option. Must be 'first' or 'last'."}), 400
+
+        spreadsheet_id = data['spreadsheet_id']
+        endpoint_name = f"/sheets/{spreadsheet_id}/deduplicate"; logger.info(f"ENDPOINT {endpoint_name}: Request received.")
         access_token = get_access_token(refresh_token); service = get_sheets_service(access_token)
         numeric_sheet_id = None; sheet_identifier_for_get_api = None
         if sheet_id_param is not None:
