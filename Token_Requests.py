@@ -262,6 +262,35 @@ def get_specific_user_access_token():
         logger.error(f"Generic exception during specific user token refresh after {duration:.2f} seconds: {str(e)}", exc_info=True)
         raise
 
+# --- NEW: API Wrapper function to get values ---
+def api_get_values(service, spreadsheet_id, range_name):
+    logger.info(f"API: Getting values from sheet '{spreadsheet_id}', range '{range_name}'.")
+    start_time = time.time()
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name
+        ).execute()
+        values = result.get('values', []) # Default to empty list if 'values' key is not present
+        duration = time.time() - start_time
+        logger.info(f"API: Values retrieval successful in {duration:.2f}s. Got {len(values)} rows.")
+        # Limit logging for very large data, only if DEBUG is enabled
+        if logger.isEnabledFor(logging.DEBUG):
+            log_value_preview = values if len(values) < 5 else str(values[:5]) + f"... ({len(values) - 5} more rows)"
+            logger.debug(f"API: Retrieved values: {log_value_preview}")
+        return values
+    except HttpError as e:
+        duration = time.time() - start_time
+        error_content = e.content.decode('utf-8', 'ignore') if e.content else str(e)
+        logger.error(f"API: HttpError getting values after {duration:.2f}s from range '{range_name}': {error_content}", exc_info=True)
+        raise
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error(f"API: Generic error getting values after {duration:.2f}s from range '{range_name}': {str(e)}", exc_info=True)
+        raise
+# --- END NEW ---
+
+
 # --- Flask Endpoints (Main App) ---
 @app.route('/auth/callback', methods=['GET'])
 def oauth2callback_endpoint():
@@ -543,6 +572,66 @@ def deduplicate_sheet_rows_endpoint():
     except HttpError as e: error_content = e.content.decode('utf-8', 'ignore') if e.content else str(e); logger.error(f"ENDPOINT {endpoint_name}: Google API HttpError: {error_content}", exc_info=True); return jsonify({"success": False, "error": "Google API Error", "details": error_content}), e.resp.status if hasattr(e, 'resp') and e.resp else 500
     except ValueError as ve: logger.error(f"ENDPOINT {endpoint_name}: Value error: {str(ve)}", exc_info=True); return jsonify({"success": False, "error": f"Invalid input value: {str(ve)}"}), 400
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
+
+
+# --- NEW: Endpoint to get values ---
+@app.route('/sheets/values/get', methods=['POST'])
+def get_values_endpoint():
+    # endpoint_name will be defined after spreadsheet_id is extracted from data,
+    # mirroring the pattern in other POST endpoints.
+    
+    try:
+        data = request.json
+        # Generic log for request body, matching other endpoints
+        logger.debug(f"ENDPOINT : Request body: {data}") 
+
+        # Check for required fields, including spreadsheet_id for endpoint_name formation
+        if not data or not all(k in data for k in ('spreadsheet_id', 'range_name', 'refresh_token')):
+            logger.warning(f"ENDPOINT : Missing 'spreadsheet_id', 'range_name', or 'refresh_token' in JSON body.") # Generic log
+            return jsonify({"success": False, "error": "Missing 'spreadsheet_id', 'range_name', or 'refresh_token' in JSON body"}), 400
+
+        spreadsheet_id = data['spreadsheet_id']
+        # Define endpoint_name *after* successfully extracting spreadsheet_id
+        endpoint_name = f"/sheets/{spreadsheet_id}/values/get"
+        logger.info(f"ENDPOINT {endpoint_name}: Request received.") 
+
+        range_name = data['range_name']
+        refresh_token = data['refresh_token']
+
+        if not range_name: # Basic validation for range_name
+            logger.warning(f"ENDPOINT {endpoint_name}: 'range_name' cannot be empty.")
+            return jsonify({"success": False, "error": "'range_name' cannot be empty"}), 400
+
+        access_token = get_access_token(refresh_token) 
+        service = get_sheets_service(access_token)
+        
+        values = api_get_values(service, spreadsheet_id, range_name)
+
+        logger.info(f"ENDPOINT {endpoint_name}: Successfully retrieved values from range '{range_name}'.")
+        return jsonify({
+            "success": True,
+            "spreadsheet_id": spreadsheet_id,
+            "range_queried": range_name,
+            "values": values
+        })
+
+    # Exception handlers use endpoint_name. If an error occurs before endpoint_name is defined 
+    # (e.g., data['spreadsheet_id'] fails), an UnboundLocalError would occur here,
+    # which is consistent with the behavior of other similar endpoints in your provided code.
+    except HttpError as e:
+        error_content = e.content.decode('utf-8', 'ignore') if e.content else str(e)
+        logger.error(f"ENDPOINT {endpoint_name}: Google API HttpError: {error_content}", exc_info=True)
+        return jsonify({"success": False, "error": "Google API Error", "details": error_content}), e.resp.status if hasattr(e, 'resp') and e.resp else 500
+    except ValueError as ve:
+        logger.error(f"ENDPOINT {endpoint_name}: Value error: {str(ve)}", exc_info=True)
+        return jsonify({"success": False, "error": f"Input or authentication error: {str(ve)}"}), 400
+    except Exception as e:
+        logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
+# --- END NEW ---
+
+
+
 
 # Run Flask
 if __name__ == "__main__":
