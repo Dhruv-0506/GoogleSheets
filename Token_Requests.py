@@ -550,7 +550,71 @@ def deduplicate_sheet_rows_endpoint():
     except Exception as e: logger.error(f"ENDPOINT {endpoint_name}: Generic exception: {str(e)}", exc_info=True); return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
 
 
+# NEW ROUTE ----------------------------------------------------------------------------------------------------------------------------
+@app.route('/sheets/sheet/read_all', methods=['POST'])
+def read_entire_sheet_endpoint():
+    # Use the literal route path for initial logs before spreadsheet_id is confirmed
+    route_path_literal = "/sheets/sheet/read_all" 
+    logger.info(f"ENDPOINT {route_path_literal}: Request received.")
+    
+    try:
+        data = request.json
+        if not data:
+            logger.warning(f"ENDPOINT {route_path_literal}: Request body is missing or not valid JSON.")
+            return jsonify({"success": False, "error": "Request body is missing or not valid JSON."}), 400
+        
+        # Consistent debug log after confirming data exists
+        logger.debug(f"ENDPOINT {route_path_literal}: Request body: {data}")
 
+        # Check for all required fields, including spreadsheet_id
+        required_fields = ['spreadsheet_id', 'sheet_name', 'refresh_token']
+        if not all(k in data for k in required_fields):
+            missing = [k for k in required_fields if k not in data]
+            logger.warning(f"ENDPOINT {route_path_literal}: Missing required fields: {', '.join(missing)} in JSON body.")
+            return jsonify({"success": False, "error": f"Missing required fields: {', '.join(missing)} in JSON body"}), 400
+
+        spreadsheet_id = data['spreadsheet_id']
+        sheet_name = data['sheet_name'] # Expecting 'sheet_name' for clarity
+        refresh_token = data['refresh_token']
+
+        # Define endpoint_name AFTER spreadsheet_id is successfully extracted, similar to other endpoints
+        # It typically includes the spreadsheet_id but not other dynamic parts like sheet_name for the base endpoint_name.
+        endpoint_name = f"/sheets/{spreadsheet_id}/sheet/read_all"
+        # Log with the specific endpoint_name now that it's defined
+        logger.info(f"ENDPOINT {endpoint_name}: Processing request to read sheet '{sheet_name}'.")
+
+        access_token = get_access_token(refresh_token)
+        service = get_sheets_service(access_token)
+        
+        # Use sheet_name directly as the range for api_get_values.
+        # The Google Sheets API interprets "SheetTitle" as the entire range of that sheet.
+        values = api_get_values(service, spreadsheet_id, sheet_name) 
+        
+        logger.info(f"ENDPOINT {endpoint_name}: Successfully retrieved all values ({len(values)} rows) from sheet '{sheet_name}'.")
+        return jsonify({
+            "success": True, 
+            "spreadsheet_id": spreadsheet_id, 
+            "sheet_name_queried": sheet_name, 
+            "values": values
+        })
+
+    except HttpError as e:
+        # endpoint_name should be defined if we've passed the initial checks
+        # If an error occurs before spreadsheet_id is parsed (e.g., data is not JSON),
+        # endpoint_name might not be defined. The initial checks try to prevent this.
+        log_context_name = endpoint_name if 'endpoint_name' in locals() else route_path_literal
+        error_content = e.content.decode('utf-8', 'ignore') if e.content else str(e)
+        logger.error(f"ENDPOINT {log_context_name}: Google API HttpError: {error_content}", exc_info=True)
+        return jsonify({"success": False, "error": "Google API Error", "details": error_content}), e.resp.status if hasattr(e, 'resp') and e.resp else 500
+    except ValueError as ve:
+        log_context_name = endpoint_name if 'endpoint_name' in locals() else route_path_literal
+        logger.error(f"ENDPOINT {log_context_name}: Value error: {str(ve)}", exc_info=True)
+        return jsonify({"success": False, "error": f"Input or authentication error: {str(ve)}"}), 400
+    except Exception as e:
+        log_context_name = endpoint_name if 'endpoint_name' in locals() else route_path_literal
+        logger.error(f"ENDPOINT {log_context_name}: Generic exception: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": f"An unexpected error occurred: {str(e)}"}), 500
+#NEW ROUTE END------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 
